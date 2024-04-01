@@ -11,6 +11,6 @@ iced_runtime = "0.12.1"
 log = "0.4.21"
 tokio = { version = "1.37.0", features = ["time", "rt", "rt-multi-thread", "macros"] }
 
-iced = { version = "0.12.1",default-features = false, features = ["webgl"]}
+iced = { version = "0.12.1",default-features = false, features = ["webgl", "image"] }
 
 console_log = "1.0"

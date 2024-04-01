@@ -75,6 +75,8 @@ impl LedgerClient {
     fn try_connect(&self) {
         // TODO: try connect the ledger
         println!("Try to connect");
+        // DEBUG
+        self.send_to_gui(LedgerMessage::Connected(Some("Nano S+".to_string()), Some("2.1.0".to_string())))
     }
     
     fn update_main(&self) {
@@ -100,9 +102,8 @@ impl ClientFn<LedgerMessage, Sender<LedgerMessage>> for LedgerClient {
     }
 
     async fn run(&mut self) {
-        if self.loopback.send(LedgerMessage::TryConnect).await.is_err() {
-            log::debug!("Cannot start connect poller");
-        }
+        // let _ = self.loopback.send(LedgerMessage::TryConnect).await;
+        self.poll_later();
         loop {
             if let Ok(msg) = self.receiver.try_recv() {
                 self.handle_message(msg);

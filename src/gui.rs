@@ -102,10 +102,10 @@ impl Application for LedgerInstaller {
     fn view(&self) -> Element<'_, Message> {
         let model = match (&self.ledger_model, &self.ledger_version) {
             (Some(model), Some(version)) => {
-                Text::new(format!("Model: {}  Version: {}", model, version))
+                Text::new(format!("Model: {}            Version: {}", model, version))
             }
             (Some(model), None) => Text::new(format!("Model: {}  Version: unknown ", model)),
-            _ => Text::new("No device connected"),
+            _ => Text::new("Please connect a device..."),
         }
         .horizontal_alignment(Horizontal::Center);
 
@@ -154,6 +154,10 @@ impl Application for LedgerInstaller {
         .into()
     }
 
+    fn theme(&self) -> Self::Theme {
+        Theme::Dark
+    }
+
     fn subscription(&self) -> Subscription<Self::Message> {
         Subscription::from_recipe(LedgerListener {
             receiver: self.ledger_receiver.clone(),
@@ -185,7 +189,12 @@ fn app_row<'a>(
         )
         .push(Space::with_width(15))
         .push({
-            let mut install = Button::new("Install");
+            let mut install = Button::new(
+                Text::new("Install")
+                    .size(11)
+                    .width(80)
+                    .horizontal_alignment(Horizontal::Center)
+            );
             if version.is_none() && next_version.is_some() {
                 install = install.on_press(install_msg)
             }
@@ -193,7 +202,12 @@ fn app_row<'a>(
         })
         .push(Space::with_width(5))
         .push({
-            let mut update = Button::new("Update");
+            let mut update = Button::new(
+                Text::new("Update")
+                    .size(11)
+                    .width(80)
+                    .horizontal_alignment(Horizontal::Center)
+            );
             if version.is_some() && next_version.is_some() {
                 update = update.on_press(update_msg)
             }
