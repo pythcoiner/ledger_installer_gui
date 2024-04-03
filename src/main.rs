@@ -24,17 +24,8 @@ async fn main() {
                 log::Level::Debug => "blue",
                 log::Level::Trace => "magenta",
             };
-
-            let file = record.file();
-            let line = record.line();
-            let mut file_line = "".to_string();
-
-            if let Some(f) = file {
-                file_line = format!(":{}", f);
-                if let Some(l) = line {
-                    file_line = format!("{}:{}", file_line, l);
-                }
-            }
+            
+         
             let formatted = if verbose_log {
                 format!(
                     "[{}][{}][{}] {}",

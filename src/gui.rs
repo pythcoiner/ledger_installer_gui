@@ -24,6 +24,8 @@ pub enum Message {
     UpdateTest,
     InstallTest,
     Connect,
+    
+    ResetAlarm,
 }
 
 #[allow(unused)]
@@ -36,6 +38,8 @@ pub struct LedgerInstaller {
     main_next_version: Version,
     test_app_version: Version,
     test_next_version: Version,
+    user_message: Option<String>,
+    alarm: bool,
 }
 
 impl LedgerInstaller {
@@ -62,6 +66,8 @@ impl Application for LedgerInstaller {
             main_next_version: Version::None,
             test_app_version: Version::None,
             test_next_version: Version::None,
+            user_message: None,
+            alarm: false,
         };
 
         (escrow, Command::none())
@@ -93,15 +99,31 @@ impl Application for LedgerInstaller {
                 LedgerMessage::TestAppNextVersion(version) => {
                     self.test_next_version = version.clone()
                 }
-                LedgerMessage::DisplayMessage(s, _) => {log::info!("{}", s)}
+                LedgerMessage::DisplayMessage(s, alarm) => {
+                    self.user_message = Some(s.clone());
+                    self.alarm = *alarm;
+                }
+                
                 _ => {
                     log::debug!("Unhandled message from ledger: {:?}!", ledger)
                 }
             },
-            Message::UpdateMain => self.send_ledger_msg(LedgerMessage::UpdateMain),
-            Message::InstallMain => self.send_ledger_msg(LedgerMessage::InstallMain),
-            Message::UpdateTest => self.send_ledger_msg(LedgerMessage::UpdateTest),
-            Message::InstallTest => self.send_ledger_msg(LedgerMessage::InstallMain),
+            Message::ResetAlarm => {
+                self.alarm = false;
+                self.user_message = None;
+            }
+            Message::UpdateMain => { /*self.send_ledger_msg(LedgerMessage::UpdateMain)*/ },
+            Message::InstallMain => { 
+                self.main_app_version = Version::None;
+                self.test_app_version = Version::None;
+                self.send_ledger_msg(LedgerMessage::InstallMain) 
+            },
+            Message::UpdateTest => { /* self.send_ledger_msg(LedgerMessage::UpdateTest) */ },
+            Message::InstallTest => {
+                self.main_app_version = Version::None;
+                self.test_app_version = Version::None;
+                self.send_ledger_msg(LedgerMessage::InstallMain) 
+            },
             _ => {
                 log::debug!("Unhandled message!")
             }
@@ -110,38 +132,50 @@ impl Application for LedgerInstaller {
     }
 
     fn view(&self) -> Element<'_, Message> {
-        let model = match (&self.ledger_model, &self.ledger_version) {
-            (Some(model), Some(version)) => {
-                Text::new(format!("Model: {}            Version: {}", model, version))
+        let first_line = match (&self.ledger_model, &self.ledger_version, (self.alarm && self.user_message.is_some())) {
+            (_, _, true) => Text::new(self.user_message.as_ref().unwrap()),
+            (Some(model), None, _) => Text::new(format!("Model: {}  Version: unknown ", model)),
+            (Some(model), Some(version), _) => {
+                Text::new(format!("Model: {}        Version: {}", model, version))
             }
-            (Some(model), None) => Text::new(format!("Model: {}  Version: unknown ", model)),
-            _ => Text::new("Please connect a device..."),
+            _ => Text::new("Please connect a device and unlock it..."),
         }
         .horizontal_alignment(Horizontal::Center);
 
         let main_app = app_row(
             "Bitcoin app",
             &self.main_app_version,
-            Message::InstallMain,
             Message::UpdateMain,
+            Message::InstallMain,
         );
 
-        let _connect: Row<Message> = Row::new()
-            .push(Space::with_width(Length::Fill))
-            .push({
-                let mut connect = Button::new("Connect");
-                // TODO: grey out button when processing update or install
-                connect = connect.on_press(Message::Connect);
-                connect
-            })
-            .push(Space::with_width(Length::Fill));
+        let reset_alarm: Option<Row<Message>> = if self.alarm {
+            Some(Row::new()
+                .push(Space::with_width(Length::Fill))
+                .push({
+                    let mut reset = Button::new("OK");
+                    reset = reset.on_press(Message::ResetAlarm);
+                    reset
+                })
+                .push(Space::with_width(Length::Fill)))
+            } else { None };
+        
 
         let test_app = app_row(
             "Testnet app",
             &self.test_app_version,
-            Message::InstallTest,
             Message::UpdateTest,
+            Message::InstallTest,
         );
+        
+        let display_app = self.ledger_model.is_some() 
+            && !(self.alarm && self.user_message.is_some());
+
+        let user_message = if !self.alarm {self.user_message.clone().map(|msg|
+            Row::new()
+                .push(Space::with_width(10))
+                .push(Text::new(msg.clone()))
+        )} else {None};
 
         container(
             Column::new()
@@ -149,22 +183,25 @@ impl Application for LedgerInstaller {
                 .push(
                     Row::new()
                         .push(Space::with_width(Length::Fill))
-                        .push(model)
+                        .push(first_line)
                         .push(Space::with_width(Length::Fill)),
                 )
                 .push(Space::with_height(10))
-                .push_maybe(if self.ledger_model.is_some() {
+                .push_maybe(if display_app {
                     Some(main_app)
                 } else {
                     None
                 })
                 .push(Space::with_height(10))
-                .push_maybe(if self.ledger_model.is_some() {
+                .push_maybe(if display_app {
                     Some(test_app)
                 } else {
                     None
                 })
-                .push(Space::with_height(Length::Fill)),
+                .push_maybe(reset_alarm)
+                .push(Space::with_height(Length::Fill))
+                .push_maybe(user_message)
+                .push(Space::with_height(5)),
         )
         .into()
     }
@@ -188,20 +225,20 @@ fn app_row<'a>(
 ) -> Row<'a, Message> {
     
     let button_text = match version {
-        Version::Installed(_) => {"Update".to_string()}
+        Version::Installed(_) => {"Try update".to_string()}
         Version::NotInstalled => {"Install".to_string()}
         Version::None => {"".to_string()}
     };
     let mut button = Button::new(
         Text::new(button_text)
             .size(11)
-            .width(80)
+            .width(100)
             .horizontal_alignment(Horizontal::Center)
         );
     
     match version {
         Version::Installed(_) => {
-            button = button.on_press(update_msg);
+            // button = button.on_press(update_msg);
         }
         Version::NotInstalled => {
             button = button.on_press(install_msg);

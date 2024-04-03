@@ -40,8 +40,10 @@ const OPEN_APP_COMMAND_TEMPLATE: APDUCommand<&[u8]> = APDUCommand {
     data: &[],
 };
 
+#[allow(unused)]
 pub const LIVE_COMMON_VERSION: &str = "34.0.0";
 pub const PROVIDER: u32 = 1; // TODO: make it possible to set it.
+#[allow(unused)]
 pub const BASE_API_V1_URL: &str = "https://manager.api.live.ledger.com/api";
 pub const BASE_API_V2_URL: &str = "https://manager.api.live.ledger.com/api/v2";
 pub const BASE_SOCKET_URL: &str = "wss://scriptrunner.api.live.ledger.com/update";
@@ -435,6 +437,7 @@ pub struct FirmwareInfo {
 }
 
 impl FirmwareInfo {
+    #[allow(unused)]
     pub fn from_device(device_info: &DeviceInfo) -> Self {
         let dev_ver_resp = minreq::Request::new(
             minreq::Method::Post,
@@ -544,7 +547,7 @@ pub fn bitcoin_app(
     } else {
         "bitcoin"
     };
-
+    log::debug!("call ledger API");
     let resp_apps = minreq::Request::new(
         minreq::Method::Get,
         format!("{}/apps/by-target", BASE_API_V2_URL),
@@ -554,6 +557,7 @@ pub fn bitcoin_app(
     .with_param("target_id", device_info.target_id.to_string())
     .with_param("firmware_version_name", device_info.version.clone())
     .send()?;
+    log::debug!("get response from ledger API");
     resp_apps
         .json::<Vec<BitcoinAppV2>>()
         // FIXME: is versionName guaranteed to be the name? What's "version" for?
@@ -565,6 +569,7 @@ pub fn bitcoin_app(
 }
 
 /// Open the given application on the device.
+#[allow(unused)]
 pub fn open_bitcoin_app(
     ledger_api: &TransportNativeHID,
     is_testnet: bool,
