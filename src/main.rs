@@ -1,55 +1,20 @@
 mod client;
+mod color;
 mod gui;
 mod ledger;
 mod ledger_lib;
 mod ledger_manager;
+mod theme;
+mod logger;
 
-use crate::client::ClientFn;
-use crate::gui::{Flags, LedgerInstaller};
-use crate::ledger::LedgerClient;
+use crate::{client::ClientFn, gui::{Flags, LedgerInstaller}, ledger::LedgerClient};
+
 use iced::{window::icon, Application, Settings, Size};
-use chrono::Local;
-use colored::Colorize;
+
 
 #[tokio::main]
 async fn main() {
-
-    let verbose_log = true;
-    fern::Dispatch::new()
-        .format(move |out, message, record| {
-            let color = match record.level() {
-                log::Level::Error => "red",
-                log::Level::Warn => "yellow",
-                log::Level::Info => "green",
-                log::Level::Debug => "blue",
-                log::Level::Trace => "magenta",
-            };
-            
-         
-            let formatted = if verbose_log {
-                format!(
-                    "[{}][{}][{}] {}",
-                    Local::now().format("%Y-%m-%d %H:%M:%S"),
-                    record.target(),
-
-                    record.level(),
-                    message
-                )
-            } else {
-                format!(
-                    "[{}] {}",
-                    record.level(),
-                    message
-                )
-            };
-            out.finish(format_args!("{}", formatted.color(color)))
-        })
-        .level(log::LevelFilter::Info)
-        .level_for("bacca", log::LevelFilter::Debug)
-        .level_for("ledger_transport_hidapi", log::LevelFilter::Error)
-        .chain(std::io::stdout())
-        .apply()
-        .unwrap();
+    logger::set_logger(true);
     
     let (ledger_sender, gui_ledger_receiver) = async_channel::unbounded();
     let (gui_ledger_sender, ledger_receiver) = async_channel::unbounded();
@@ -70,5 +35,5 @@ async fn main() {
     settings.window.resizable = false;
     settings.window.icon = Some(icon);
 
-    LedgerInstaller::run(settings).expect("")
+    LedgerInstaller::run(settings).expect("Fail to launch application!")
 }

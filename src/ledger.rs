@@ -1,21 +1,21 @@
-use std::fmt::{Display, Formatter};
-use crate::client::ClientFn;
-use crate::gui::Message;
-use crate::gui::Message::LedgerClientMsg;
-use std::time::Duration;
-use ledger_transport_hidapi::TransportNativeHID;
-use crate::ledger_lib::{BASE_SOCKET_URL, bitcoin_app, DeviceInfo, list_installed_apps, query_via_websocket};
-use crate::ledger_manager::{device_info, install_app, ledger_api};
+use crate::{
+    client::ClientFn,
+    gui::Message,
+    gui::Message::LedgerClientMsg,
+    ledger_lib::{
+        bitcoin_app, list_installed_apps, query_via_websocket, DeviceInfo, BASE_SOCKET_URL,
+    }, ledger_manager::{device_info, ledger_api}, listener
+};
+
 use form_urlencoded::Serializer as UrlSerializer;
-
-
-
-use crate::listener;
+use ledger_transport_hidapi::TransportNativeHID;
+use std::fmt::{Display, Formatter};
+use std::time::Duration;
 
 listener!(LedgerListener, LedgerMessage, Message, LedgerClientMsg);
 
 #[derive(Debug, Clone)]
-pub enum Version{
+pub enum Version {
     Installed(String),
     NotInstalled,
     None,
@@ -24,15 +24,21 @@ pub enum Version{
 impl Display for Version {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Version::Installed(version) => { write!(f, "{}", version)}
-            Version::NotInstalled => {write!(f, "Not installed!")}
-            Version::None => {write!(f, "???")}
+            Version::Installed(version) => {
+                write!(f, "{}", version)
+            }
+            Version::NotInstalled => {
+                write!(f, "Not installed!")
+            }
+            Version::None => {
+                write!(f, " - ")
+            }
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub enum Model{
+pub enum Model {
     NanoS,
     NanoSP,
     NanoX,
@@ -42,32 +48,42 @@ pub enum Model{
 impl Display for Model {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Model::NanoS => { write!(f, "Nano S") }
-            Model::NanoSP => { write!(f, "Nano S+") }
-            Model::NanoX => { write!(f, "Nano X") }
-            _ => {write!(f, "")}
+            Model::NanoS => {
+                write!(f, "Nano S")
+            }
+            Model::NanoSP => {
+                write!(f, "Nano S+")
+            }
+            Model::NanoX => {
+                write!(f, "Nano X")
+            }
+            _ => {
+                write!(f, "")
+            }
         }
     }
 }
 
-#[allow(unused)]
 #[derive(Debug, Clone)]
 pub enum LedgerMessage {
+    #[allow(unused)]
     UpdateMain,
     InstallMain,
+    #[allow(unused)]
     UpdateTest,
     InstallTest,
     TryConnect,
 
     Connected(Option<String>, Option<String>),
     MainAppVersion(Version),
+    #[allow(unused)]
     MainAppNextVersion(Version),
     TestAppVersion(Version),
+    #[allow(unused)]
     TestAppNextVersion(Version),
     DisplayMessage(String, bool),
 }
 
-#[allow(unused)]
 pub struct LedgerClient {
     sender: Sender<LedgerMessage>,
     receiver: Receiver<LedgerMessage>,
@@ -83,34 +99,36 @@ impl LedgerClient {
             self.run().await;
         });
     }
-
-    #[allow(unused)]
+    /// Send a LedgerMessage to the GUI via async-channel
     fn send_to_gui(&self, msg: LedgerMessage) {
         let sender = self.sender.clone();
         tokio::spawn(async move {
             if sender.send(msg).await.is_err() {
-                log::debug!("Fail to send Message")
+                log::debug!("LedgerClient.send_to_gui() -> Fail to send Message")
             };
         });
     }
 
+    /// Handle a LedgerMessage received from the GUI via async-channel
     fn handle_message(&mut self, msg: LedgerMessage) {
-        match msg {
+        match &msg {
             LedgerMessage::TryConnect => {
                 if self.device_version.is_none() {
                     self.poll_later();
                     self.poll();
                 }
-                
             }
             LedgerMessage::UpdateMain => self.update_main(),
             LedgerMessage::InstallMain => self.install_main(),
             LedgerMessage::UpdateTest => self.update_test(),
             LedgerMessage::InstallTest => self.install_test(),
-            _ => {}
+            _ => {
+                log::debug!("LedgerClient.handle_message({:?}) -> unhandled!", msg)
+            }
         }
     }
 
+    /// Delayed self sent message in order to call poll() later
     fn poll_later(&self) {
         let loopback = self.loopback.clone();
         tokio::spawn(async move {
@@ -121,6 +139,7 @@ impl LedgerClient {
         });
     }
 
+    /// Try to connect to the ledger device and get firmware and bitcoin apps versions
     fn poll(&mut self) {
         log::info!("Try to poll device...");
         if let Some(transport) = self.connect() {
@@ -130,11 +149,14 @@ impl LedgerClient {
                 Ok(info) => {
                     log::info!("Device connected");
                     log::debug!("Device version: {}", &info.version);
-                    self.display_message(&format!("Device connected, version: {}", &info.version), false);
+                    self.display_message(
+                        &format!("Device connected, version: {}", &info.version),
+                        false,
+                    );
                     if self.device_version.is_none() {
                         self.send_to_gui(LedgerMessage::Connected(
                             Some("Ledger".to_string()),
-                            Some(info.version.clone())
+                            Some(info.version.clone()),
                         ));
                     }
                     device_version = Some(info.version.clone());
@@ -151,11 +173,13 @@ impl LedgerClient {
                 // if it's our first connection, we check the if apps are installed & version
                 self.display_message("Querying installed apps. Please confirm on device.", false);
                 if self.device_version.is_none() && device_version.is_some() {
-                    if let Ok((main_installed, test_installed)) = self.check_apps_installed(&transport) {
+                    if let Ok((main_installed, test_installed)) =
+                        self.check_apps_installed(&transport)
+                    {
                         // get the mainnet app version name
                         let (main_model, main_version) = if main_installed {
                             match self.get_app_version(&info, true) {
-                                Ok((model, version)) => { (model, version)}
+                                Ok((model, version)) => (model, version),
                                 Err(e) => {
                                     self.display_message(&e, true);
                                     (Model::Unknown, Version::None)
@@ -170,7 +194,7 @@ impl LedgerClient {
                         // get the testnet app version name
                         let (test_model, test_version) = if test_installed {
                             match self.get_app_version(&info, true) {
-                                Ok((model, version)) => { (model, version)}
+                                Ok((model, version)) => (model, version),
                                 Err(e) => {
                                     self.display_message(&e, false);
                                     (Model::Unknown, Version::None)
@@ -183,10 +207,13 @@ impl LedgerClient {
                         };
 
                         let model = match (&main_model, &test_model) {
-                            (Model::Unknown, _) => {test_model}
-                            _ => {main_model}
+                            (Model::Unknown, _) => test_model,
+                            _ => main_model,
                         };
-                        self.send_to_gui(LedgerMessage::Connected(Some(model.to_string()), device_version.clone()));
+                        self.send_to_gui(LedgerMessage::Connected(
+                            Some(model.to_string()),
+                            device_version.clone(),
+                        ));
                         self.display_message("", false);
                         self.mainnet_version = main_version;
                         self.testnet_version = test_version;
@@ -195,18 +222,18 @@ impl LedgerClient {
                 }
                 self.device_version = device_version;
             }
-
         } else {
             self.send_to_gui(LedgerMessage::Connected(None, None));
             log::debug!("No transport");
         }
-
     }
 
     fn connect(&self) -> Option<TransportNativeHID> {
         if let Some(api) = &ledger_api().ok() {
             TransportNativeHID::new(api).ok()
-        } else { None }
+        } else {
+            None
+        }
     }
 
     fn check_apps_installed(&mut self, transport: &TransportNativeHID) -> Result<(bool, bool), ()> {
@@ -220,11 +247,9 @@ impl LedgerClient {
                 for app in apps {
                     log::debug!("  [{}]", &app.name);
                     if app.name == "Bitcoin" {
-                        log::debug!("Mainnet installed");
                         mainnet = true
                     }
                     if app.name == "Bitcoin Test" {
-                        self.display_message("Testnet installed", false);
                         testnet = true
                     }
                 }
@@ -233,7 +258,7 @@ impl LedgerClient {
                 log::debug!("Error listing installed applications: {}.", e);
                 self.send_to_gui(LedgerMessage::DisplayMessage(
                     format!("Error listing installed applications: {}.", e),
-                    true
+                    true,
                 ));
                 return Err(());
             }
@@ -248,7 +273,11 @@ impl LedgerClient {
         Ok((mainnet, testnet))
     }
 
-    fn get_app_version(&mut self, info: &DeviceInfo, testnet: bool) -> Result<(Model, Version), String> {
+    fn get_app_version(
+        &mut self,
+        info: &DeviceInfo,
+        testnet: bool,
+    ) -> Result<(Model, Version), String> {
         log::debug!("get_app_version()");
         match bitcoin_app(info, testnet) {
             Ok(r) => {
@@ -258,16 +287,19 @@ impl LedgerClient {
                 // example for nano s+
                 // BitcoinAppV2 { version_name: "Bitcoin Test", perso: "perso_11", delete_key: "nanos+/1.1.0/bitcoin_testnet/app_2.2.0-beta_del_key", firmware: "nanos+/1.1.0/bitcoin_testnet/app_2.2.0-beta", firmware_key: "nanos+/1.1.0/bitcoin_testnet/app_2.2.0-beta_key", hash: "3c6d6ebebb085da948c0211434b90bc4504a04a133b8d0621aa0ee91fd3a0b4f" }
                 if let Some(app) = r {
-                    let chunks: Vec<&str> = app.firmware
-                        .split('/')
-                        .collect();
+                    let chunks: Vec<&str> = app.firmware.split('/').collect();
                     let model = chunks.first().map(|m| m.to_string());
                     let version = chunks.last().map(|m| m.to_string());
                     if let (Some(model), Some(version)) = (model, version) {
-                        let model = if model == "nanos" {Model::NanoS}
-                        else if model == "nanos+" {Model::NanoSP}
-                        else if model == "nanox" {Model::NanoX}
-                        else {Model::Unknown};
+                        let model = if model == "nanos" {
+                            Model::NanoS
+                        } else if model == "nanos+" {
+                            Model::NanoSP
+                        } else if model == "nanox" {
+                            Model::NanoX
+                        } else {
+                            Model::Unknown
+                        };
 
                         let version = if version.contains("app_") {
                             version.replace("app_", "")
@@ -277,23 +309,30 @@ impl LedgerClient {
 
                         let version = Version::Installed(version);
                         if testnet {
-                            log::debug!("Testnet Model{}, Version{}", model.clone(), version.clone());
-                        }else {
-                            log::debug!("Mainnet Model{}, Version{}", model.clone(), version.clone());
+                            log::debug!(
+                                "Testnet Model{}, Version{}",
+                                model.clone(),
+                                version.clone()
+                            );
+                        } else {
+                            log::debug!(
+                                "Mainnet Model{}, Version{}",
+                                model.clone(),
+                                version.clone()
+                            );
                         }
                         Ok((model, version))
                     } else {
                         Err(format!("Failed to parse  model/version in {:?}", chunks))
                     }
-
                 } else {
                     log::debug!("Fail to get version info");
                     Err("Fail to get version info".to_string())
                 }
             }
             Err(e) => {
-                log::debug!("Fail to get version info: {}",e);
-                Err(format!("Fail to get version info: {}",e))
+                log::debug!("Fail to get version info: {}", e);
+                Err(format!("Fail to get version info: {}", e))
             }
         }
     }
@@ -301,44 +340,51 @@ impl LedgerClient {
     fn update_apps_version(&self) {
         match &self.mainnet_version {
             Version::None => {}
-            _ => {self.send_to_gui(LedgerMessage::MainAppVersion(self.mainnet_version.clone()));}
+            _ => {
+                self.send_to_gui(LedgerMessage::MainAppVersion(self.mainnet_version.clone()));
+            }
         }
         match &self.testnet_version {
             Version::None => {}
-            _ => {self.send_to_gui(LedgerMessage::TestAppVersion(self.testnet_version.clone()));}
+            _ => {
+                self.send_to_gui(LedgerMessage::TestAppVersion(self.testnet_version.clone()));
+            }
         }
-
     }
 
     fn install(&mut self, testnet: bool) {
         self.send_to_gui(LedgerMessage::MainAppVersion(Version::None));
         self.send_to_gui(LedgerMessage::TestAppVersion(Version::None));
-        
+
         self.install_app(testnet);
 
         self.device_version = None;
         self.poll();
     }
-    
+
     fn install_app(&mut self, testnet: bool) {
-        
+        log::debug!("install_app(testnet={})", testnet);
         if let Some(api) = self.connect() {
             self.display_message("Get device info from API...", false);
-            if let Ok(device_info)  = device_info(&api){
+            if let Ok(device_info) = device_info(&api) {
                 let bitcoin_app = match bitcoin_app(&device_info, testnet) {
-                    Ok(Some(a)) => {
-                        a 
-                    },
+                    Ok(Some(a)) => a,
                     Ok(None) => {
                         self.display_message("Could not get info about Bitcoin app.", true);
                         return;
-                    },
+                    }
                     Err(e) => {
-                        self.display_message(&format!("Error querying info about Bitcoin app: {}.", e), true);
+                        self.display_message(
+                            &format!("Error querying info about Bitcoin app: {}.", e),
+                            true,
+                        );
                         return;
-                    },
+                    }
                 };
-                self.display_message("Installing, please allow Ledger manager on device...", false);
+                self.display_message(
+                    "Installing, please allow Ledger manager on device...",
+                    false,
+                );
                 // Now install the app by connecting through their websocket thing to their HSM. Make sure to
                 // properly escape the parameters in the request's parameter.
                 let install_ws_url = UrlSerializer::new(format!("{}/install?", BASE_SOCKET_URL))
@@ -358,12 +404,9 @@ impl LedgerClient {
             } else {
                 self.display_message("Fail to fetch device info!", true);
             }
-            
         } else {
             self.display_message("Fail to connect to device!", true);
         }
-        
-        
     }
 
     fn install_main(&mut self) {
@@ -385,7 +428,6 @@ impl LedgerClient {
     fn display_message(&mut self, msg: &str, alarm: bool) {
         self.send_to_gui(LedgerMessage::DisplayMessage(msg.to_string(), alarm));
     }
-
 }
 
 impl ClientFn<LedgerMessage, Sender<LedgerMessage>> for LedgerClient {
@@ -411,7 +453,7 @@ impl ClientFn<LedgerMessage, Sender<LedgerMessage>> for LedgerClient {
             if let Ok(msg) = self.receiver.try_recv() {
                 self.handle_message(msg);
             }
-
+            // cpu load is not visible w/ 1ns but we can increase it w/o performance penalty
             tokio::time::sleep(Duration::from_nanos(1)).await;
         }
     }

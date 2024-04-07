@@ -1,10 +1,9 @@
-use ledger_transport_hidapi::hidapi::HidApi;
 use crate::ledger_lib::{
     bitcoin_app, list_installed_apps, query_via_websocket, DeviceInfo, BASE_SOCKET_URL,
 };
 use form_urlencoded::Serializer as UrlSerializer;
+use ledger_transport_hidapi::hidapi::HidApi;
 use ledger_transport_hidapi::TransportNativeHID;
-
 
 pub fn device_info(ledger_api: &TransportNativeHID) -> Result<DeviceInfo, String> {
     DeviceInfo::new(ledger_api)
@@ -12,10 +11,8 @@ pub fn device_info(ledger_api: &TransportNativeHID) -> Result<DeviceInfo, String
 }
 
 pub fn ledger_api() -> Result<HidApi, String> {
-    HidApi::new()
-        .map_err(|e| format!("Error initializing HDI api: {}.", e))
+    HidApi::new().map_err(|e| format!("Error initializing HDI api: {}.", e))
 }
-
 
 pub fn install_app(ledger_api: &TransportNativeHID, is_testnet: bool, force: bool) {
     // First of all make sure it's not already installed.
@@ -30,30 +27,31 @@ pub fn install_app(ledger_api: &TransportNativeHID, is_testnet: bool, force: boo
         Err(_e) => {
             // TODO: send message
             return;
-        },
+        }
     };
     if apps
         .iter()
-        .any(|app| app.name.to_lowercase() == lowercase_app_name) && !force
+        .any(|app| app.name.to_lowercase() == lowercase_app_name)
+        && !force
     {
         // error!("Bitcoin app already installed. Use the update command to update it.");
         // TODO: send message
         return;
     }
 
-    if let Ok(device_info)  = device_info(ledger_api){
+    if let Ok(device_info) = device_info(ledger_api) {
         let bitcoin_app = match bitcoin_app(&device_info, is_testnet) {
             Ok(Some(a)) => a,
             Ok(None) => {
                 // TODO: send message
                 return;
-                // error!("Could not get info about Bitcoin app.",) 
-            },
+                // error!("Could not get info about Bitcoin app.",)
+            }
             Err(_e) => {
                 // TODO: send message
                 return;
-                // error!("Error querying info about Bitcoin app: {}.", e) 
-            },
+                // error!("Error querying info about Bitcoin app: {}.", e)
+            }
         };
 
         // Now install the app by connecting through their websocket thing to their HSM. Make sure to
@@ -70,15 +68,12 @@ pub fn install_app(ledger_api: &TransportNativeHID, is_testnet: bool, force: boo
         if let Err(_e) = query_via_websocket(ledger_api, &install_ws_url) {
             // TODO: send message
             return;
-        //     error!(
-        //     "Got an error when installing Bitcoin app from Ledger's remote HSM: {}.",
-        //     e
-        // );
+            //     error!(
+            //     "Got an error when installing Bitcoin app from Ledger's remote HSM: {}.",
+            //     e
+            // );
         }
         println!("Successfully installed the app.");
     }
-    
-
-    
 }
 
